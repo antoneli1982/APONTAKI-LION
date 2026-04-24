@@ -2119,6 +2119,137 @@ function rDash(){
       </table></div></div>`;
   })()}
 
+  <!-- ANÁLISE REAL vs CRONOANÁLISE POR PEÇA -->
+  ${(()=>{
+    // Agrupar apontamentos finalizados por peça (com qtd > 0)
+    const mapa={};
+    enc.filter(a=>a.tipo==='peca'&&a.pecId&&a.qtd>0).forEach(a=>{
+      const pid=a.pecId;
+      if(!mapa[pid])mapa[pid]={segTotal:0,qtdTotal:0,apontamentos:0};
+      mapa[pid].segTotal+=cm2(a.inicio,a.fim)*60; // minutos→segundos
+      mapa[pid].qtdTotal+=+a.qtd;
+      mapa[pid].apontamentos++;
+    });
+    // Cruzar com peças que têm tempoCrono cadastrado
+    const comparacao=Object.keys(mapa).map(pid=>{
+      const p=DB.pecas.find(x=>x.id==pid);
+      if(!p||!(p.tempoCrono>0))return null;
+      const d=mapa[pid];
+      const segPorPecaReal=d.qtdTotal>0?d.segTotal/d.qtdTotal:0;
+      const diffPct=p.tempoCrono>0?((segPorPecaReal-p.tempoCrono)/p.tempoCrono)*100:0;
+      const diffSeg=segPorPecaReal-p.tempoCrono;
+      return{peca:p,...d,segPorPecaReal,diffPct,diffSeg};
+    }).filter(Boolean).sort((a,b)=>b.diffPct-a.diffPct);
+
+    // Peças com cronoanálise mas sem produção ainda
+    const semProducao=DB.pecas.filter(p=>p.tempoCrono>0&&!mapa[p.id]).length;
+    const semCrono=Object.keys(mapa).filter(pid=>{const p=DB.pecas.find(x=>x.id==pid);return !p||!(p.tempoCrono>0);}).length;
+
+    if(comparacao.length===0){
+      // Nenhuma peça comparável: painel informativo
+      const totalCrono=DB.pecas.filter(p=>p.tempoCrono>0).length;
+      if(totalCrono===0&&semCrono===0)return '';
+      return`<div class="panel" style="margin-bottom:14px">
+        <div class="ph"><div class="ptitle" style="color:var(--gold)">⏱ Real vs Cronoanálise por Peça</div><span style="font-size:11px;color:var(--tx3)">comparativo de produtividade</span></div>
+        <div class="es" style="padding:30px 18px">
+          <span class="es-i">📋</span>
+          ${totalCrono===0?`<div style="color:var(--tx2);font-size:12px">Nenhuma peça tem tempo de cronoanálise cadastrado.</div><div style="font-size:10px;color:var(--tx3);margin-top:6px">Edite uma peça em <strong>Peças</strong> e preencha o campo <strong style="color:var(--gold)">⏱ Tempo Cronoanálise</strong>.</div>`:`<div style="color:var(--tx2);font-size:12px">${totalCrono} peça(s) com cronoanálise cadastrada, mas ainda sem produção registrada.</div>${semCrono>0?`<div style="font-size:10px;color:var(--tx3);margin-top:6px">${semCrono} peça(s) em produção sem tempo de cronoanálise.</div>`:''}`}
+        </div>
+      </div>`;
+    }
+
+    // Helper formatador
+    const fmtS=s=>{if(s<=0)return'—';if(s<60)return s.toFixed(s<10?1:0)+'s';if(s<3600){const m=Math.floor(s/60),rs=Math.round(s%60);return m+'min'+(rs?' '+rs+'s':'');}return(s/3600).toFixed(2)+'h';};
+    const fmtDiff=s=>{const abs=Math.abs(s);if(abs<60)return abs.toFixed(0)+'s';if(abs<3600)return(abs/60).toFixed(1)+'min';return(abs/3600).toFixed(2)+'h';};
+    // Cor por desvio: negativo = melhor que crono (verde), positivo = pior (gold/orange/red)
+    const corDesvio=p=>p<=-5?'var(--green)':p<=5?'var(--cyan)':p<=15?'var(--gold)':p<=30?'var(--orange)':'var(--red)';
+    const gradDesvio=p=>p<=-5?'var(--green2)':p<=5?'var(--cyan2)':p<=15?'var(--gold2)':p<=30?'var(--orange)':'var(--red2)';
+    const icoDesvio=p=>p<=-5?'🚀':p<=5?'✅':p<=15?'⚠️':p<=30?'⚡':'🔴';
+
+    // Totalizadores
+    const totalProdutivas=comparacao.filter(c=>c.diffPct<=5).length;
+    const totalAtencao=comparacao.filter(c=>c.diffPct>5&&c.diffPct<=15).length;
+    const totalCriticas=comparacao.filter(c=>c.diffPct>15).length;
+
+    return`<div class="panel" style="margin-bottom:14px">
+      <div class="ph">
+        <div class="ptitle" style="color:var(--gold)">⏱ Real vs Cronoanálise por Peça</div>
+        <span style="font-size:11px;color:var(--tx3)">${comparacao.length} peça(s) comparada(s)</span>
+      </div>
+      <!-- Resumo rápido -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;padding:14px 18px 8px">
+        <div style="padding:10px 14px;border-radius:var(--r);background:rgba(52,211,153,.06);border:1px solid rgba(52,211,153,.18)">
+          <div style="font-size:9px;color:var(--tx3);letter-spacing:1px;text-transform:uppercase;font-family:var(--FC);font-weight:700">No tempo ou melhor</div>
+          <div style="font-size:22px;font-weight:900;color:var(--green);font-family:var(--FC);margin-top:2px">${totalProdutivas}</div>
+          <div style="font-size:9px;color:var(--tx3)">≤ 5% de desvio</div>
+        </div>
+        <div style="padding:10px 14px;border-radius:var(--r);background:rgba(240,180,41,.06);border:1px solid rgba(240,180,41,.18)">
+          <div style="font-size:9px;color:var(--tx3);letter-spacing:1px;text-transform:uppercase;font-family:var(--FC);font-weight:700">Atenção</div>
+          <div style="font-size:22px;font-weight:900;color:var(--gold);font-family:var(--FC);margin-top:2px">${totalAtencao}</div>
+          <div style="font-size:9px;color:var(--tx3)">5% a 15% acima</div>
+        </div>
+        <div style="padding:10px 14px;border-radius:var(--r);background:rgba(251,113,133,.06);border:1px solid rgba(251,113,133,.18)">
+          <div style="font-size:9px;color:var(--tx3);letter-spacing:1px;text-transform:uppercase;font-family:var(--FC);font-weight:700">Críticas</div>
+          <div style="font-size:22px;font-weight:900;color:var(--red);font-family:var(--FC);margin-top:2px">${totalCriticas}</div>
+          <div style="font-size:9px;color:var(--tx3)">&gt; 15% acima</div>
+        </div>
+        ${semCrono>0||semProducao>0?`<div style="padding:10px 14px;border-radius:var(--r);background:rgba(167,139,250,.06);border:1px solid rgba(167,139,250,.18)">
+          <div style="font-size:9px;color:var(--tx3);letter-spacing:1px;text-transform:uppercase;font-family:var(--FC);font-weight:700">Pendentes</div>
+          <div style="font-size:22px;font-weight:900;color:var(--violet);font-family:var(--FC);margin-top:2px">${semCrono+semProducao}</div>
+          <div style="font-size:9px;color:var(--tx3)">${semCrono>0?semCrono+' s/ crono':''}${semCrono>0&&semProducao>0?' · ':''}${semProducao>0?semProducao+' s/ prod.':''}</div>
+        </div>`:''}
+      </div>
+      <!-- Tabela detalhada -->
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="border-bottom:1px solid var(--bd)">
+          <th style="text-align:left;padding:10px 16px;color:rgba(240,180,41,.5);font-weight:700;text-transform:uppercase;font-size:8px;letter-spacing:1.5px;font-family:var(--FC)">Peça</th>
+          <th style="text-align:right;padding:8px 12px;color:var(--tx3);font-weight:600;text-transform:uppercase;font-size:9px;letter-spacing:.5px">Qtd</th>
+          <th style="text-align:right;padding:8px 12px;color:var(--gold);font-weight:600;text-transform:uppercase;font-size:9px;letter-spacing:.5px">⏱ Crono</th>
+          <th style="text-align:right;padding:8px 12px;color:var(--cyan);font-weight:600;text-transform:uppercase;font-size:9px;letter-spacing:.5px">⏱ Real</th>
+          <th style="text-align:right;padding:8px 12px;color:var(--tx3);font-weight:600;text-transform:uppercase;font-size:9px;letter-spacing:.5px">Δ /peça</th>
+          <th style="text-align:right;padding:8px 16px;color:var(--tx3);font-weight:600;text-transform:uppercase;font-size:9px;letter-spacing:.5px">Desvio</th>
+        </tr></thead>
+        <tbody>${comparacao.map((c,i)=>{
+          const cor=corDesvio(c.diffPct);
+          const grad=gradDesvio(c.diffPct);
+          const ico=icoDesvio(c.diffPct);
+          const pctAbs=Math.min(Math.abs(c.diffPct),100);
+          return`<tr style="border-bottom:1px solid rgba(255,255,255,.04);${i%2===0?'background:rgba(255,255,255,.01)':''}">
+            <td style="padding:10px 16px">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span style="font-size:14px">${ico}</span>
+                <div style="min-width:0;flex:1">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;background:var(--violet-bg);color:var(--violet);border:1px solid rgba(167,139,250,.2);font-family:var(--FM)">${esc(c.peca.codigo)}</span>
+                    <span style="color:var(--tx);font-weight:500;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px" title="${esc(c.peca.descricao)}">${esc(c.peca.descricao.length>40?c.peca.descricao.slice(0,40)+'…':c.peca.descricao)}</span>
+                  </div>
+                  <div style="font-size:9px;color:var(--tx3);margin-top:2px">${c.apontamentos} apontamento${c.apontamentos>1?'s':''}</div>
+                </div>
+              </div>
+            </td>
+            <td style="text-align:right;padding:10px 12px;font-family:var(--FM);color:var(--cyan);font-weight:600">${c.qtdTotal}un</td>
+            <td style="text-align:right;padding:10px 12px;font-family:var(--FM);font-weight:700;color:var(--gold)">${fmtS(c.peca.tempoCrono)}</td>
+            <td style="text-align:right;padding:10px 12px;font-family:var(--FM);font-weight:700;color:var(--cyan)">${fmtS(c.segPorPecaReal)}</td>
+            <td style="text-align:right;padding:10px 12px;font-family:var(--FM);font-weight:600;color:${cor}">${c.diffSeg>0?'+':c.diffSeg<0?'−':''}${fmtDiff(c.diffSeg)}</td>
+            <td style="text-align:right;padding:10px 16px">
+              <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+                <span style="font-size:13px;font-weight:800;color:${cor};font-family:var(--FM)">${c.diffPct>0?'+':''}${c.diffPct.toFixed(1)}%</span>
+                <div style="width:70px;height:4px;border-radius:2px;background:var(--bd2);overflow:hidden"><div style="width:${pctAbs}%;height:100%;background:${grad};${c.diffPct<0?'margin-left:auto':''}"></div></div>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>
+      <div style="padding:10px 18px 14px;font-size:10px;color:var(--tx3);display:flex;flex-wrap:wrap;gap:14px;align-items:center;border-top:1px solid rgba(255,255,255,.04)">
+        <span style="display:flex;align-items:center;gap:5px"><span>🚀</span>&lt;-5% (melhor que o padrão)</span>
+        <span style="display:flex;align-items:center;gap:5px"><span>✅</span>±5% (dentro do padrão)</span>
+        <span style="display:flex;align-items:center;gap:5px"><span>⚠️</span>+5% a +15%</span>
+        <span style="display:flex;align-items:center;gap:5px"><span>⚡</span>+15% a +30%</span>
+        <span style="display:flex;align-items:center;gap:5px"><span>🔴</span>&gt;+30% (crítico)</span>
+      </div>
+    </div>`;
+  })()}
+
   <div class="dg2c">
     <div>
       <!-- PRODUTIVIDADE POR OPERADOR -->
@@ -2968,18 +3099,22 @@ function dPar(id){
 
 // PEÇAS
 function rPeca(){
+  // Helper formatador de tempo para exibição da tabela
+  const fmtTC=s=>{if(!s||s<=0)return'<span style="color:var(--tx3)">—</span>';if(s<60)return s.toFixed(s%1?1:0)+'s';if(s<3600){const m=Math.floor(s/60),rs=Math.round(s%60);return m+'min'+(rs?' '+rs+'s':'');}return(s/3600).toFixed(2)+'h';};
   document.getElementById('content').innerHTML=xlBar('pecas','oPeca()','Nova Peça')+`
-  <div class="panel"><div class="ph"><div class="ptitle" style="color:var(--violet)">🟣 Peças</div><span style="font-size:11px;color:var(--tx3)">${DB.pecas.length} cadastradas</span></div>
-  <div class="pf">${DB.pecas.length?`<div class="tw"><table><thead><tr><th>Código</th><th>Descrição</th><th>Material</th><th>Nº Desenho</th><th>Apontamentos</th><th></th></tr></thead><tbody>${DB.pecas.map(p=>{const t=DB.apontamentos.filter(a=>a.pecId==p.id).length;return`<tr><td><span class="code cv">${esc(p.codigo)}</span></td><td><strong>${esc(p.descricao)}</strong></td><td style="color:var(--tx2)">${esc(p.material||'—')}</td><td style="font-family:var(--FM);font-size:10px;color:var(--tx3)">${esc(p.desenho||'—')}</td><td style="font-family:var(--FM)">${t}</td><td><div class="tda"><button class="bic ed" onclick="oPeca(${p.id})">✎</button><button class="bic dl" onclick="dPeca(${p.id})">🗑</button></div></td></tr>`;}).join('')}</tbody></table></div>`:`<div class="es"><span class="es-i">🟣</span>Nenhuma peça.</div>`}</div></div>`;
+  <div class="panel"><div class="ph"><div class="ptitle" style="color:var(--violet)">🟣 Peças</div><span style="font-size:11px;color:var(--tx3)">${DB.pecas.length} cadastradas · ${DB.pecas.filter(p=>p.tempoCrono>0).length} com cronoanálise</span></div>
+  <div class="pf">${DB.pecas.length?`<div class="tw"><table><thead><tr><th>Código</th><th>Descrição</th><th>Material</th><th>Nº Desenho</th><th style="color:var(--gold)">⏱ Crono</th><th>Apontamentos</th><th></th></tr></thead><tbody>${DB.pecas.map(p=>{const t=DB.apontamentos.filter(a=>a.pecId==p.id).length;return`<tr><td><span class="code cv">${esc(p.codigo)}</span></td><td><strong>${esc(p.descricao)}</strong></td><td style="color:var(--tx2)">${esc(p.material||'—')}</td><td style="font-family:var(--FM);font-size:10px;color:var(--tx3)">${esc(p.desenho||'—')}</td><td style="font-family:var(--FM);font-weight:700;color:${p.tempoCrono>0?'var(--gold)':'var(--tx3)'}">${fmtTC(p.tempoCrono)}</td><td style="font-family:var(--FM)">${t}</td><td><div class="tda"><button class="bic ed" onclick="oPeca(${p.id})">✎</button><button class="bic dl" onclick="dPeca(${p.id})">🗑</button></div></td></tr>`;}).join('')}</tbody></table></div>`:`<div class="es"><span class="es-i">🟣</span>Nenhuma peça.</div>`}</div></div>`;
 }
 function oPeca(id=null){
   const p=id?DB.pecas.find(x=>x.id==id):null;
-  om(id?'Editar Peça':'Nova Peça',`<div class="fg"><div class="fr2"><div class="fgrp"><label class="flbl">Código <span class="req">*</span></label><input class="fc" type="text" id="pc2-c" value="${esc(p?.codigo||'')}" placeholder="PCA-004"></div><div class="fgrp"><label class="flbl">Nº Desenho</label><input class="fc" type="text" id="pc2-d" value="${esc(p?.desenho||'')}"></div></div><div class="fgrp"><label class="flbl">Descrição <span class="req">*</span></label><input class="fc" type="text" id="pc2-n" value="${esc(p?.descricao||'')}"></div><div class="fgrp"><label class="flbl">Material</label><input class="fc" type="text" id="pc2-m" value="${esc(p?.material||'')}"></div></div>`,()=>{
+  om(id?'Editar Peça':'Nova Peça',`<div class="fg"><div class="fr2"><div class="fgrp"><label class="flbl">Código <span class="req">*</span></label><input class="fc" type="text" id="pc2-c" value="${esc(p?.codigo||'')}" placeholder="PCA-004"></div><div class="fgrp"><label class="flbl">Nº Desenho</label><input class="fc" type="text" id="pc2-d" value="${esc(p?.desenho||'')}"></div></div><div class="fgrp"><label class="flbl">Descrição <span class="req">*</span></label><input class="fc" type="text" id="pc2-n" value="${esc(p?.descricao||'')}"></div><div class="fr2"><div class="fgrp"><label class="flbl">Material</label><input class="fc" type="text" id="pc2-m" value="${esc(p?.material||'')}"></div><div class="fgrp"><label class="flbl" style="color:var(--gold)">⏱ Tempo Cronoanálise (seg/peça)</label><input class="fc" type="number" step="0.01" min="0" id="pc2-tc" value="${p?.tempoCrono||''}" placeholder="Ex: 150" style="font-family:var(--FM);font-weight:600"></div></div><div style="font-size:10px;color:var(--tx3);padding:6px 10px;border-radius:var(--r);background:rgba(240,180,41,.05);border:1px solid rgba(240,180,41,.1);margin-top:2px">💡 Informe o <strong style="color:var(--gold)">tempo padrão</strong> por peça em <strong>segundos</strong>. Este valor será comparado com o tempo real no Dashboard.</div></div>`,()=>{
     const c=document.getElementById('pc2-c').value.trim(),n=document.getElementById('pc2-n').value.trim(),m=document.getElementById('pc2-m').value.trim(),d=document.getElementById('pc2-d').value.trim();
+    const tc=parseFloat(document.getElementById('pc2-tc').value)||0;
     if(!c||!n){toast('Código e Descrição obrigatórios.','r');return;}
     if(!id&&DB.pecas.find(x=>x.codigo===c)){toast('Código já existe.','r');return;}
-    if(id){const i=DB.pecas.findIndex(x=>x.id==id);DB.pecas[i]={...DB.pecas[i],codigo:c,descricao:n,material:m,desenho:d};}
-    else DB.pecas.push({id:nid(DB.pecas),codigo:c,descricao:n,material:m,desenho:d});
+    if(tc<0){toast('Tempo cronoanálise deve ser positivo.','r');return;}
+    if(id){const i=DB.pecas.findIndex(x=>x.id==id);DB.pecas[i]={...DB.pecas[i],codigo:c,descricao:n,material:m,desenho:d,tempoCrono:tc};}
+    else DB.pecas.push({id:nid(DB.pecas),codigo:c,descricao:n,material:m,desenho:d,tempoCrono:tc});
     sdb();cm();toast(id?'Atualizada!':'Cadastrada!');rPeca();
   });
 }
@@ -3276,7 +3411,7 @@ const XS={
   maquinas:{label:'Máquinas',headers:['Código','Nome','Setor','Status'],fields:['codigo','nome','setor','status'],note:'Status: ativo | manutencao | inativo',getData:()=>DB.maquinas,parse:r=>({codigo:String(r['Código']||'').trim(),nome:String(r['Nome']||'').trim(),setor:String(r['Setor']||'').trim(),status:['ativo','manutencao','inativo'].includes(String(r['Status']||'').toLowerCase())?String(r['Status']).toLowerCase():'ativo'}),validate:r=>r.codigo&&r.nome,unique:r=>DB.maquinas.some(x=>x.codigo===r.codigo),push:r=>DB.maquinas.push({id:nid(DB.maquinas),...r}),refresh:rMaq},
   pessoas:{label:'Pessoas',headers:['Matrícula','Nome','Cargo','Turno'],fields:['matricula','nome','cargo','turno'],note:'Turno: M (Manhã) | T (Tarde) | N (Noite)',getData:()=>DB.pessoas,parse:r=>({matricula:String(r['Matrícula']||'').trim(),nome:String(r['Nome']||'').trim(),cargo:String(r['Cargo']||'').trim(),turno:['M','T','N'].includes(String(r['Turno']||'').toUpperCase())?String(r['Turno']).toUpperCase():'M'}),validate:r=>r.matricula&&r.nome,unique:r=>DB.pessoas.some(x=>x.matricula===r.matricula),push:r=>DB.pessoas.push({id:nid(DB.pessoas),...r}),refresh:rPes},
   paradas:{label:'Cód.Parada',headers:['Código','Descrição','Categoria','Prioridade'],fields:['codigo','descricao','categoria','prioridade'],note:'Prioridade: baixa | media | alta · Categoria: Manutenção|Qualidade|Setup|Operacional|Logística|Processo|Outro',getData:()=>DB.paradas,parse:r=>({codigo:String(r['Código']||'').trim().toUpperCase(),descricao:String(r['Descrição']||'').trim(),categoria:String(r['Categoria']||'Manutenção').trim(),prioridade:['baixa','media','alta'].includes(String(r['Prioridade']||'').toLowerCase())?String(r['Prioridade']).toLowerCase():'media'}),validate:r=>r.codigo&&r.descricao,unique:r=>DB.paradas.some(x=>x.codigo===r.codigo),push:r=>DB.paradas.push({id:nid(DB.paradas),...r}),refresh:rPar},
-  pecas:{label:'Peças',headers:['Código','Descrição','Material','Nº Desenho'],fields:['codigo','descricao','material','desenho'],note:'',getData:()=>DB.pecas,parse:r=>({codigo:String(r['Código']||'').trim(),descricao:String(r['Descrição']||'').trim(),material:String(r['Material']||'').trim(),desenho:String(r['Nº Desenho']||'').trim()}),validate:r=>r.codigo&&r.descricao,unique:r=>DB.pecas.some(x=>x.codigo===r.codigo),push:r=>DB.pecas.push({id:nid(DB.pecas),...r}),refresh:rPeca},
+  pecas:{label:'Peças',headers:['Código','Descrição','Material','Nº Desenho','Tempo Cronoanálise (seg)'],fields:['codigo','descricao','material','desenho','tempoCrono'],note:'Tempo Cronoanálise: segundos por peça (ex: 150). Use ponto para decimais (ex: 2.5)',getData:()=>DB.pecas,parse:r=>({codigo:String(r['Código']||'').trim(),descricao:String(r['Descrição']||'').trim(),material:String(r['Material']||'').trim(),desenho:String(r['Nº Desenho']||'').trim(),tempoCrono:parseFloat(String(r['Tempo Cronoanálise (seg)']||'0').replace(',','.'))||0}),validate:r=>r.codigo&&r.descricao,unique:r=>DB.pecas.some(x=>x.codigo===r.codigo),push:r=>DB.pecas.push({id:nid(DB.pecas),...r}),refresh:rPeca},
 };
 function dlXl(type){
   const s=XS[type];if(!s)return;
