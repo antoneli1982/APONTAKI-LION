@@ -2451,7 +2451,6 @@ function rApBody(){const el=document.getElementById('ap-body');if(!el)return;el.
 function rApPeca(){
   const pesO=DB.pessoas.map(p=>`<option value="${p.id}">${esc(p.matricula)} — ${esc(p.nome)}</option>`).join('');
   const maqO=`<option value="">Sem máquina</option>`+DB.maquinas.map(m=>`<option value="${m.id}">${esc(m.codigo)} — ${esc(m.nome)}</option>`).join('');
-  const opO=DB.operacoes.map(o=>`<option value="${o.id}">${esc(o.nome)}</option>`).join('');
   const at=atM();
   return`<div class="apg">
     <div class="apc" style="border-color:rgba(167,139,250,.15)">
@@ -2485,7 +2484,13 @@ function rApPeca(){
         </div>
 
         <div class="fr2">
-          <div class="fgrp"><label class="flbl">Operação <span class="req">*</span></label><select class="fc" id="pc-op"><option value="">Selecione...</option>${opO}</select></div>
+          <div class="fgrp">
+            <label class="flbl">Operação <span class="req">*</span></label>
+            <select class="fc" id="pc-op" disabled style="opacity:.45;cursor:not-allowed">
+              <option value="">⬆ Selecione a peça primeiro</option>
+            </select>
+            <div id="pc-op-hint" style="font-size:11px;color:var(--tx3);margin-top:3px;min-height:14px"></div>
+          </div>
           <div class="fgrp"><label class="flbl">Máquina</label><select class="fc" id="pc-maq">${maqO}</select></div>
         </div>
         <div class="fgrp"><label class="flbl">Operador <span class="req">*</span></label><select class="fc" id="pc-pes"><option value="">Selecione...</option>${pesO}</select></div>
@@ -2574,15 +2579,26 @@ function rApParada(){
 
 // Piece lookup
 function _updPcOpSelect(pecCod){
-  const sel=document.getElementById('pc-op');if(!sel)return;
-  const pec=DB.pecas.find(p=>p.codigo.toUpperCase()===(pecCod||'').toUpperCase());
-  const ops=pec?.operacoes?.filter(o=>o.nome);
-  if(ops&&ops.length>0){
+  const sel=document.getElementById('pc-op');
+  const hint=document.getElementById('pc-op-hint');
+  if(!sel)return;
+  if(!pecCod){
+    sel.innerHTML='<option value="">⬆ Selecione a peça primeiro</option>';
+    sel.disabled=true;sel.style.opacity='.45';sel.style.cursor='not-allowed';
+    if(hint)hint.textContent='';
+    return;
+  }
+  const pec=DB.pecas.find(p=>p.codigo.toUpperCase()===pecCod.toUpperCase());
+  const ops=(pec?.operacoes||[]).filter(o=>o.nome);
+  if(ops.length>0){
     sel.innerHTML='<option value="">Selecione a operação...</option>'+
-      ops.map((o,i)=>`<option value="pec_${o.id}">${'Op '+(i+1)+' — '+esc(o.nome)}</option>`).join('');
+      ops.map((o,i)=>`<option value="pec_${o.id}">Op ${i+1} — ${esc(o.nome)}${o.tempo>0?' ('+o.tempo+'s)':''}</option>`).join('');
+    sel.disabled=false;sel.style.opacity='1';sel.style.cursor='';
+    if(hint)hint.innerHTML=`<span style="color:var(--gold)">⚙️ ${ops.length} operaç${ops.length===1?'ão':'ões'} cadastrada${ops.length===1?'':'s'}</span>`;
   } else {
-    sel.innerHTML='<option value="">Selecione...</option>'+
-      DB.operacoes.map(o=>`<option value="${o.id}">${esc(o.nome)}</option>`).join('');
+    sel.innerHTML='<option value="">⚠ Peça sem operações cadastradas</option>';
+    sel.disabled=true;sel.style.opacity='.5';sel.style.cursor='not-allowed';
+    if(hint)hint.innerHTML=`<span style="color:var(--gold)">Cadastre as operações em <strong>Peças</strong> ⚙️</span>`;
   }
 }
 function lkPeca(val){
