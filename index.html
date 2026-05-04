@@ -2076,7 +2076,7 @@ function rDash(){
       <div style="padding:5px 12px;border-radius:20px;background:rgba(240,180,41,.08);border:1px solid rgba(240,180,41,.18)">
         <span style="font-size:12px;font-weight:800;color:var(--gold);font-family:var(--FC);letter-spacing:.8px">HOJE</span>
       </div>
-      <button class="btn bs" onclick="exportAdminXlsx()" style="color:var(--gold);border-color:rgba(240,180,41,.25);font-size:12px;display:flex;align-items:center;gap:5px" title="Exportar Excel completo para gestão">
+      <button class="btn bs" onclick="abrirExportAdmin()" style="color:var(--gold);border-color:rgba(240,180,41,.25);font-size:12px;display:flex;align-items:center;gap:5px" title="Exportar Excel completo para gestão">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Excel Gestão
       </button>
@@ -2844,7 +2844,7 @@ function rHist(){
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <select class="fc" id="hf-t" onchange="fHist()" style="width:120px;font-size:13px;padding:5px 8px"><option value="">Todos</option><option value="peca">Peça</option><option value="parada">Parada</option></select>
       <input class="fc" type="text" id="hf-q" placeholder="Buscar..." oninput="fHist()" style="width:170px;font-size:13px;padding:5px 8px">
-      <button class="btn bs" onclick="exportAdminXlsx()" style="color:var(--gold);border-color:rgba(240,180,41,.3);font-size:13px;display:flex;align-items:center;gap:5px;margin-left:auto" title="Excel completo para gestão (5 abas)">
+      <button class="btn bs" onclick="abrirExportAdmin()" style="color:var(--gold);border-color:rgba(240,180,41,.3);font-size:13px;display:flex;align-items:center;gap:5px;margin-left:auto" title="Excel completo para gestão (5 abas)">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         📊 Excel Gestão
       </button>
@@ -3489,7 +3489,96 @@ function hdImp(type,input){
 }
 
 // ══ EXPORT ADMIN EXCEL ═════════════════════════════════════════════
-function exportAdminXlsx(){
+function abrirExportAdmin(){
+  const hoje=new Date().toISOString().slice(0,10);
+  // Datas mín/máx disponíveis no banco
+  const datas=DB.apontamentos.map(a=>a.inicio?.slice(0,10)).filter(Boolean).sort();
+  const dMin=datas[0]||hoje, dMax=datas[datas.length-1]||hoje;
+  const total=DB.apontamentos.length;
+  om('📊 Exportar Excel — Gestão',`
+    <div style="margin-bottom:16px;padding:10px 14px;background:rgba(240,180,41,.06);border:1px solid rgba(240,180,41,.18);border-radius:var(--r);font-size:13px;color:var(--tx2)">
+      <strong style="color:var(--gold)">${total}</strong> apontamentos disponíveis · período: <strong style="color:var(--gold)">${dMin}</strong> a <strong style="color:var(--gold)">${dMax}</strong>
+    </div>
+    <div style="margin-bottom:14px">
+      <div class="flbl" style="margin-bottom:8px">⚡ Atalhos rápidos</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <button class="btn bs bsm" onclick="_setExDt('hoje')" style="font-size:12px">Hoje</button>
+        <button class="btn bs bsm" onclick="_setExDt('7d')" style="font-size:12px">Últimos 7 dias</button>
+        <button class="btn bs bsm" onclick="_setExDt('15d')" style="font-size:12px">15 dias</button>
+        <button class="btn bs bsm" onclick="_setExDt('30d')" style="font-size:12px">30 dias</button>
+        <button class="btn bs bsm" onclick="_setExDt('mes')" style="font-size:12px">Este mês</button>
+        <button class="btn bs bsm" onclick="_setExDt('mesant')" style="font-size:12px">Mês anterior</button>
+        <button class="btn bs bsm" onclick="_setExDt('90d')" style="font-size:12px">90 dias</button>
+        <button class="btn bs bsm" onclick="_setExDt('ano')" style="font-size:12px">Este ano</button>
+        <button class="btn bs bsm" onclick="_setExDt('tudo')" style="color:var(--cyan);border-color:rgba(34,211,238,.3);font-size:12px">Tudo</button>
+      </div>
+    </div>
+    <div class="fr2">
+      <div class="fgrp">
+        <label class="flbl">De <span class="req">*</span></label>
+        <input class="fc" type="date" id="ex-di" value="${hoje}" oninput="_updExCnt()">
+      </div>
+      <div class="fgrp">
+        <label class="flbl">Até <span class="req">*</span></label>
+        <input class="fc" type="date" id="ex-df" value="${hoje}" oninput="_updExCnt()">
+      </div>
+    </div>
+    <div id="ex-cnt" style="margin-top:10px;padding:8px 12px;background:var(--bg3);border-radius:var(--r);font-size:13px;color:var(--tx2);text-align:center"></div>
+  `,()=>{
+    const di=document.getElementById('ex-di').value;
+    const df=document.getElementById('ex-df').value;
+    if(!di||!df){toast('Informe as datas.','r');return;}
+    if(di>df){toast('Data inicial maior que final.','r');return;}
+    cm();exportAdminXlsx(di,df);
+  },'📥 Baixar Excel');
+  setTimeout(_updExCnt,80);
+}
+function _setExDt(modo){
+  const n=new Date();
+  const pad=v=>String(v).padStart(2,'0');
+  const fmt=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  let di='',df=fmt(n);
+  if(modo==='hoje'){di=fmt(n);}
+  else if(modo==='7d'){const t=new Date(n);t.setDate(t.getDate()-6);di=fmt(t);}
+  else if(modo==='15d'){const t=new Date(n);t.setDate(t.getDate()-14);di=fmt(t);}
+  else if(modo==='30d'){const t=new Date(n);t.setDate(t.getDate()-29);di=fmt(t);}
+  else if(modo==='90d'){const t=new Date(n);t.setDate(t.getDate()-89);di=fmt(t);}
+  else if(modo==='mes'){di=n.getFullYear()+'-'+pad(n.getMonth()+1)+'-01';}
+  else if(modo==='mesant'){
+    const m=new Date(n.getFullYear(),n.getMonth()-1,1);
+    const mf=new Date(n.getFullYear(),n.getMonth(),0);
+    di=fmt(m);df=fmt(mf);
+  }
+  else if(modo==='ano'){di=n.getFullYear()+'-01-01';}
+  else if(modo==='tudo'){
+    const datas=DB.apontamentos.map(a=>a.inicio?.slice(0,10)).filter(Boolean).sort();
+    di=datas[0]||fmt(n);df=datas[datas.length-1]||fmt(n);
+  }
+  const eli=document.getElementById('ex-di'),elf=document.getElementById('ex-df');
+  if(eli)eli.value=di;if(elf)elf.value=df;
+  _updExCnt();
+}
+function _updExCnt(){
+  const di=document.getElementById('ex-di')?.value;
+  const df=document.getElementById('ex-df')?.value;
+  const el=document.getElementById('ex-cnt');
+  if(!el||!di||!df)return;
+  const base=DB.apontamentos.filter(a=>a.inicio&&a.inicio.slice(0,10)>=di&&a.inicio.slice(0,10)<=df);
+  const enc=base.filter(a=>a.fim);
+  const pecas=enc.filter(a=>a.tipo==='peca');
+  const paradas=enc.filter(a=>a.tipo==='parada');
+  if(!base.length){el.innerHTML='<span style="color:var(--red)">⚠ Nenhum apontamento nesse período</span>';return;}
+  el.innerHTML=`<span style="color:var(--green);font-weight:700">${base.length}</span> apontamentos · <span style="color:var(--violet)">${pecas.length} peças</span> · <span style="color:var(--red)">${paradas.length} paradas</span> · <span style="color:var(--gold)">${base.length-enc.length} em andamento</span>`;
+}
+
+function exportAdminXlsx(di,df){
+  // Filtrar apontamentos pelo período
+  const base=DB.apontamentos.filter(a=>{
+    const d=a.inicio?.slice(0,10)||'';
+    return(!di||d>=di)&&(!df||d<=df);
+  });
+  if(!base.length){toast('Nenhum dado no período selecionado.','r');return;}
+
   const wb=XLSX.utils.book_new();
   const tur2=t=>({M:'Manhã',T:'Tarde',N:'Noite'}[t]||t||'');
   const fmtSec=s=>{if(!s||s<=0)return'';if(s<60)return s.toFixed(1)+'s';if(s<3600)return(s/60).toFixed(1)+'min';return(s/3600).toFixed(2)+'h';};
@@ -3499,7 +3588,7 @@ function exportAdminXlsx(){
     'Cód.Operação/Parada','Descrição Peça/Parada','Categoria Parada','Tipo Parada','Prioridade Parada',
     'Material','Nº Desenho','T.Crono(s/pç)','Desvio(s)','Desvio(%)','Status Produtividade',
     'Início','Fim','Duração(min)','Duração Formatada','Qtd Produzida','Observação','Status','Sincronizado'];
-  const apRows=DB.apontamentos.map(a=>{
+  const apRows=base.map(a=>{
     const maq=a.maqId?gmaq(a.maqId):{codigo:'',nome:'',setor:''};
     const pes=gpes(a.pesId);
     const dur=a.fim?cm2(a.inicio,a.fim):null;
@@ -3545,7 +3634,7 @@ function exportAdminXlsx(){
     'T.Produtivo(min)','Seg/Operação','Seg/Peça','Peças/Hora','Op/Hora',
     'T.Parado(min)','Qtd Paradas','Eficiência(%)'];
   const opRows=DB.pessoas.map(p=>{
-    const aps=DB.apontamentos.filter(a=>a.pesId==p.id&&a.fim);
+    const aps=base.filter(a=>a.pesId==p.id&&a.fim);
     const tp=aps.filter(a=>a.tipo==='peca').reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
     const tpar=aps.filter(a=>a.tipo==='parada').reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
     const qtd=aps.filter(a=>a.tipo==='peca').reduce((s,a)=>s+(a.qtd?+a.qtd:0),0);
@@ -3568,7 +3657,7 @@ function exportAdminXlsx(){
   const maqH=['Cód.Máquina','Nome','Setor','Qtd Operações','Qtd Produzida',
     'T.Produtivo(min)','Seg/Operação','Op/Hora','T.Parado(min)','Qtd Paradas','Eficiência(%)'];
   const maqRows=DB.maquinas.map(m=>{
-    const aps=DB.apontamentos.filter(a=>a.maqId==m.id&&a.fim);
+    const aps=base.filter(a=>a.maqId==m.id&&a.fim);
     const tp=aps.filter(a=>a.tipo==='peca').reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
     const tpar=aps.filter(a=>a.tipo==='parada').reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
     const qtd=aps.filter(a=>a.tipo==='peca').reduce((s,a)=>s+(a.qtd?+a.qtd:0),0);
@@ -3586,9 +3675,9 @@ function exportAdminXlsx(){
   // ── ABA 4: Análise de Paradas ──────────────────────────────────────
   const parH=['Cód.Parada','Descrição','Categoria','Tipo','Prioridade',
     'Qtd Ocorrências','T.Total Parado(min)','T.Médio(min)','T.Total Formatado','% do T.Parado Total'];
-  const totalParMin=DB.apontamentos.filter(a=>a.tipo==='parada'&&a.fim).reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
+  const totalParMin=base.filter(a=>a.tipo==='parada'&&a.fim).reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
   const parRows=DB.paradas.map(p=>{
-    const aps=DB.apontamentos.filter(a=>a.tipo==='parada'&&a.parId==p.id&&a.fim);
+    const aps=base.filter(a=>a.tipo==='parada'&&a.parId==p.id&&a.fim);
     if(!aps.length)return null;
     const tot=aps.reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
     const med=tot/aps.length;
@@ -3605,10 +3694,10 @@ function exportAdminXlsx(){
     'T.Crono(s/pç)','T.Crono Fmt','Seg/Peça Real','T.Real Fmt',
     'Desvio(s)','Desvio(%)','Status','Qtd Produzida','Apontamentos'];
   const cronoRows=DB.pecas.map(p=>{
-    const aps=DB.apontamentos.filter(a=>a.tipo==='peca'&&a.pecId==p.id&&a.fim&&a.qtd>0);
+    const aps=base.filter(a=>a.tipo==='peca'&&a.pecId==p.id&&a.fim&&a.qtd>0);
     if(!aps.length)return[p.codigo,p.descricao,p.material||'',p.desenho||'',
       p.tempoCrono>0?p.tempoCrono:'',p.tempoCrono>0?fmtSec(p.tempoCrono):'',
-      '','','','','Sem produção',0,0];
+      '','','','','Sem produção no período',0,0];
     const segTotal=aps.reduce((s,a)=>s+cm2(a.inicio,a.fim)*60,0);
     const qtdTotal=aps.reduce((s,a)=>s+(+a.qtd),0);
     const sppReal=qtdTotal>0?segTotal/qtdTotal:0;
@@ -3624,7 +3713,8 @@ function exportAdminXlsx(){
   wsCrono['!cols']=cronoH.map((_,i)=>({wch:[12,30,14,12,14,14,14,14,12,12,18,14,14][i]||14}));
   XLSX.utils.book_append_sheet(wb,wsCrono,'Real vs Crono');
 
-  XLSX.writeFile(wb,'APONTAKI_ADMIN_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  const sufixo=(di&&df)?'_'+di+'_a_'+df:'';
+  XLSX.writeFile(wb,'APONTAKI_ADMIN'+sufixo+'.xlsx');
   toast('Excel administrativo gerado com 5 abas! 📊','g');
 }
 
