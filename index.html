@@ -1893,13 +1893,41 @@ async function sendSheets(a){
   if(!DB.config.sheetsEnabled||!DB.config.sheetsUrl)return{ok:false};
   const maq=a.maqId?gmaq(a.maqId):{codigo:'',nome:'',setor:''},pes=gpes(a.pesId);
   const dur=a.fim?cm2(a.inicio,a.fim):null;
-  const pl={id:a.id,tipo:a.tipo,maquinaCod:maq.codigo,maquinaNome:maq.nome,maquinaSetor:maq.setor,
-    operadorMatricula:pes.matricula,operadorNome:pes.nome,
-    inicio:fdt(a.inicio),fim:a.fim?fdt(a.fim):'Em andamento',
-    duracaoMin:dur??'',duracaoFmt:dur!=null?fdur(dur):'Em andamento',obs:a.obs||'',
-    status:a.status,enviadoEm:new Date().toISOString()};
-  if(a.tipo==='parada'){const pr=gpar(a.parId);pl.paradaCod=pr.codigo;pl.paradaDesc=pr.descricao;pl.paradaCat=pr.categoria;}
-  else{const pec=a.pecId?gpec(a.pecId):null;const op=gop(a.opId);pl.pecaCod=pec?pec.codigo:(a.pecCod||'');pl.pecaDesc=pec?pec.descricao:(a.pecNome||'');pl.operacao=op.nome;pl.quantidade=a.qtd||'';}
+  const pl={
+    id:a.id, tipo:a.tipo,
+    maquinaCod:maq.codigo, maquinaNome:maq.nome, maquinaSetor:maq.setor,
+    operadorNome:pes.nome, operadorMatricula:pes.matricula,
+    operadorTurno:pes.turno?({M:'Manhã',T:'Tarde',N:'Noite'}[pes.turno]||pes.turno):'',
+    operadorCargo:pes.cargo||'',
+    inicio:fdt(a.inicio), fim:a.fim?fdt(a.fim):'Em andamento',
+    duracaoMin:dur!=null?+dur.toFixed(4):'', duracaoFmt:dur!=null?fdur(dur):'Em andamento',
+    obs:a.obs||'', status:a.status, enviadoEm:new Date().toISOString()
+  };
+  if(a.tipo==='parada'){
+    const pr=gpar(a.parId);
+    pl.paradaCod=pr.codigo; pl.paradaDesc=pr.descricao;
+    pl.paradaCat=pr.categoria||''; pl.paradaTipo=pr.tipo||'T.P.P';
+    pl.paradaPrioridade=pr.prioridade||'media';
+  } else {
+    const pec=a.pecId?gpec(a.pecId):null;
+    const op=gop(a.opId);
+    pl.pecaCod=pec?pec.codigo:(a.pecCod||'');
+    pl.pecaDesc=pec?pec.descricao:(a.pecNome||'');
+    pl.pecaMaterial=pec?(pec.material||''):'';
+    pl.pecaDesenho=pec?(pec.desenho||''):'';
+    pl.operacao=op?op.nome:'';
+    pl.quantidade=a.qtd||0;
+    pl.tempoCrono=pec&&pec.tempoCrono>0?pec.tempoCrono:'';
+    if(pec&&pec.tempoCrono>0&&dur!=null&&a.qtd>0){
+      const sppReal=dur*60/a.qtd;
+      pl.desvioSeg=+(sppReal-pec.tempoCrono).toFixed(2);
+      pl.desvioPct=+((sppReal-pec.tempoCrono)/pec.tempoCrono*100).toFixed(1);
+      const dp=pl.desvioPct;
+      pl.statusProdutividade=dp<=-5?'Acima do Esperado':dp<=5?'No Tempo':dp<=15?'Atenção':dp<=30?'Abaixo':'Crítico';
+    } else {
+      pl.desvioSeg=''; pl.desvioPct=''; pl.statusProdutividade='';
+    }
+  }
   try{const r=await fetch(DB.config.sheetsUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pl)});const d=await r.json();return{ok:d.success===true};}
   catch(e){return{ok:false};}
 }
@@ -2048,6 +2076,10 @@ function rDash(){
       <div style="padding:5px 12px;border-radius:20px;background:rgba(240,180,41,.08);border:1px solid rgba(240,180,41,.18)">
         <span style="font-size:12px;font-weight:800;color:var(--gold);font-family:var(--FC);letter-spacing:.8px">HOJE</span>
       </div>
+      <button class="btn bs" onclick="exportAdminXlsx()" style="color:var(--gold);border-color:rgba(240,180,41,.25);font-size:12px;display:flex;align-items:center;gap:5px" title="Exportar Excel completo para gestão">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Excel Gestão
+      </button>
     </div>
   </div>
   <!-- KPIs PRINCIPAIS -->
@@ -2809,9 +2841,13 @@ function rHist(){
   </div>
   <!-- TABELA HISTÓRICO -->
   <div class="panel"><div class="ph"><div class="ptitle">📋 Histórico</div>
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
       <select class="fc" id="hf-t" onchange="fHist()" style="width:120px;font-size:13px;padding:5px 8px"><option value="">Todos</option><option value="peca">Peça</option><option value="parada">Parada</option></select>
       <input class="fc" type="text" id="hf-q" placeholder="Buscar..." oninput="fHist()" style="width:170px;font-size:13px;padding:5px 8px">
+      <button class="btn bs" onclick="exportAdminXlsx()" style="color:var(--gold);border-color:rgba(240,180,41,.3);font-size:13px;display:flex;align-items:center;gap:5px;margin-left:auto" title="Excel completo para gestão (5 abas)">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        📊 Excel Gestão
+      </button>
     </div>
   </div><div class="pf" id="hbody">${hRows(list)}</div></div>`;
 }
@@ -3452,6 +3488,146 @@ function hdImp(type,input){
   reader.readAsArrayBuffer(file);
 }
 
+// ══ EXPORT ADMIN EXCEL ═════════════════════════════════════════════
+function exportAdminXlsx(){
+  const wb=XLSX.utils.book_new();
+  const tur2=t=>({M:'Manhã',T:'Tarde',N:'Noite'}[t]||t||'');
+  const fmtSec=s=>{if(!s||s<=0)return'';if(s<60)return s.toFixed(1)+'s';if(s<3600)return(s/60).toFixed(1)+'min';return(s/3600).toFixed(2)+'h';};
+
+  // ── ABA 1: Apontamentos Completo ──────────────────────────────────
+  const apH=['ID','Tipo','Data','Maq.Código','Maq.Nome','Setor','Operador','Matrícula','Turno','Cargo',
+    'Cód.Operação/Parada','Descrição Peça/Parada','Categoria Parada','Tipo Parada','Prioridade Parada',
+    'Material','Nº Desenho','T.Crono(s/pç)','Desvio(s)','Desvio(%)','Status Produtividade',
+    'Início','Fim','Duração(min)','Duração Formatada','Qtd Produzida','Observação','Status','Sincronizado'];
+  const apRows=DB.apontamentos.map(a=>{
+    const maq=a.maqId?gmaq(a.maqId):{codigo:'',nome:'',setor:''};
+    const pes=gpes(a.pesId);
+    const dur=a.fim?cm2(a.inicio,a.fim):null;
+    const ip=a.tipo==='peca';
+    let codOp='',descPec='',catPar='',tipoPar='',priPar='',material='',desenho='',crono='',desvS='',desvP='',statusProd='';
+    if(ip){
+      const pec=a.pecId?gpec(a.pecId):null;
+      const op=gop(a.opId);
+      codOp=pec?pec.codigo:(a.pecCod||'');
+      descPec=pec?pec.descricao:(a.pecNome||'');
+      material=pec?(pec.material||''):'';
+      desenho=pec?(pec.desenho||''):'';
+      crono=pec&&pec.tempoCrono>0?pec.tempoCrono:'';
+      if(dur!=null&&pec&&pec.tempoCrono>0&&a.qtd>0){
+        const sppReal=dur*60/a.qtd;
+        desvS=(sppReal-pec.tempoCrono).toFixed(2);
+        const dp2=(sppReal-pec.tempoCrono)/pec.tempoCrono*100;
+        desvP=dp2.toFixed(1)+'%';
+        statusProd=dp2<=-5?'Acima do Esperado':dp2<=5?'No Tempo':dp2<=15?'Atenção':dp2<=30?'Abaixo':'Crítico';
+      }
+    } else {
+      const pr=gpar(a.parId);
+      codOp=pr.codigo;descPec=pr.descricao;catPar=pr.categoria||'';tipoPar=pr.tipo||'T.P.P';priPar=pr.prioridade||'media';
+    }
+    return[
+      a.id,a.tipo,a.inicio?a.inicio.slice(0,10):'',
+      maq.codigo,maq.nome,maq.setor,
+      pes.nome,pes.matricula,tur2(pes.turno),pes.cargo||'',
+      codOp,descPec,catPar,tipoPar,priPar,
+      material,desenho,crono,desvS,desvP,statusProd,
+      a.inicio?fdt(a.inicio):'',a.fim?fdt(a.fim):'Em andamento',
+      dur!=null?+dur.toFixed(4):'',dur!=null?fdur(dur):'',
+      ip?(a.qtd||''):'',a.obs||'',a.status,a.syncado?'Sim':'Não'
+    ];
+  });
+  const wsAp=XLSX.utils.aoa_to_sheet([apH,...apRows]);
+  wsAp['!cols']=[60,80,90,100,160,100,160,100,70,140,130,220,130,100,110,130,110,100,90,80,160,160,160,100,130,80,200,90,70].map(w=>({wch:Math.round(w/7)}));
+  wsAp['!freeze']={xSplit:0,ySplit:1};
+  XLSX.utils.book_append_sheet(wb,wsAp,'Apontamentos');
+
+  // ── ABA 2: Por Operador ────────────────────────────────────────────
+  const opH=['Operador','Matrícula','Turno','Cargo','Qtd Operações','Qtd Produzida',
+    'T.Produtivo(min)','Seg/Operação','Seg/Peça','Peças/Hora','Op/Hora',
+    'T.Parado(min)','Qtd Paradas','Eficiência(%)'];
+  const opRows=DB.pessoas.map(p=>{
+    const aps=DB.apontamentos.filter(a=>a.pesId==p.id&&a.fim);
+    const tp=aps.filter(a=>a.tipo==='peca').reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
+    const tpar=aps.filter(a=>a.tipo==='parada').reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
+    const qtd=aps.filter(a=>a.tipo==='peca').reduce((s,a)=>s+(a.qtd?+a.qtd:0),0);
+    const op=aps.filter(a=>a.tipo==='peca').length;
+    const ef=tp+tpar>0?Math.round(tp/(tp+tpar)*100):0;
+    const spo=op>0?Math.round(tp*60/op):0;
+    const spp=qtd>0?Math.round(tp*60/qtd):0;
+    const pph=tp>0?Math.round(qtd/tp*60*10)/10:0;
+    const oph=tp>0?Math.round(op/tp*60*10)/10:0;
+    if(!op&&!aps.filter(a=>a.tipo==='parada').length)return null;
+    return[p.nome,p.matricula,tur2(p.turno),p.cargo||'',op,qtd,
+      +tp.toFixed(2),spo,spp,pph,oph,
+      +tpar.toFixed(2),aps.filter(a=>a.tipo==='parada').length,ef+'%'];
+  }).filter(Boolean);
+  const wsOp=XLSX.utils.aoa_to_sheet([opH,...opRows]);
+  wsOp['!cols']=opH.map((_,i)=>({wch:[22,12,8,18,14,14,16,14,12,12,12,16,12,14][i]||14}));
+  XLSX.utils.book_append_sheet(wb,wsOp,'Por Operador');
+
+  // ── ABA 3: Por Máquina ────────────────────────────────────────────
+  const maqH=['Cód.Máquina','Nome','Setor','Qtd Operações','Qtd Produzida',
+    'T.Produtivo(min)','Seg/Operação','Op/Hora','T.Parado(min)','Qtd Paradas','Eficiência(%)'];
+  const maqRows=DB.maquinas.map(m=>{
+    const aps=DB.apontamentos.filter(a=>a.maqId==m.id&&a.fim);
+    const tp=aps.filter(a=>a.tipo==='peca').reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
+    const tpar=aps.filter(a=>a.tipo==='parada').reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
+    const qtd=aps.filter(a=>a.tipo==='peca').reduce((s,a)=>s+(a.qtd?+a.qtd:0),0);
+    const op=aps.filter(a=>a.tipo==='peca').length;
+    const ef=tp+tpar>0?Math.round(tp/(tp+tpar)*100):0;
+    const spo=op>0?Math.round(tp*60/op):0;
+    const oph=tp>0?Math.round(op/tp*60*10)/10:0;
+    if(!tp&&!tpar)return null;
+    return[m.codigo,m.nome,m.setor,op,qtd,+tp.toFixed(2),spo,oph,+tpar.toFixed(2),aps.filter(a=>a.tipo==='parada').length,ef+'%'];
+  }).filter(Boolean).sort((a,b)=>parseFloat(b[10])-parseFloat(a[10]));
+  const wsMaq=XLSX.utils.aoa_to_sheet([maqH,...maqRows]);
+  wsMaq['!cols']=maqH.map((_,i)=>({wch:[14,22,12,14,14,16,14,12,16,12,14][i]||14}));
+  XLSX.utils.book_append_sheet(wb,wsMaq,'Por Máquina');
+
+  // ── ABA 4: Análise de Paradas ──────────────────────────────────────
+  const parH=['Cód.Parada','Descrição','Categoria','Tipo','Prioridade',
+    'Qtd Ocorrências','T.Total Parado(min)','T.Médio(min)','T.Total Formatado','% do T.Parado Total'];
+  const totalParMin=DB.apontamentos.filter(a=>a.tipo==='parada'&&a.fim).reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
+  const parRows=DB.paradas.map(p=>{
+    const aps=DB.apontamentos.filter(a=>a.tipo==='parada'&&a.parId==p.id&&a.fim);
+    if(!aps.length)return null;
+    const tot=aps.reduce((s,a)=>s+cm2(a.inicio,a.fim),0);
+    const med=tot/aps.length;
+    const pct=totalParMin>0?((tot/totalParMin)*100).toFixed(1)+'%':'0%';
+    return[p.codigo,p.descricao,p.categoria||'',p.tipo||'T.P.P',p.prioridade||'media',
+      aps.length,+tot.toFixed(2),+med.toFixed(2),fdur(tot),pct];
+  }).filter(Boolean).sort((a,b)=>b[5]-a[5]);
+  const wsPar=XLSX.utils.aoa_to_sheet([parH,...parRows]);
+  wsPar['!cols']=parH.map((_,i)=>({wch:[12,30,16,10,12,16,18,16,18,18][i]||16}));
+  XLSX.utils.book_append_sheet(wb,wsPar,'Análise Paradas');
+
+  // ── ABA 5: Real vs Cronoanálise ────────────────────────────────────
+  const cronoH=['Cód.Peça','Descrição','Material','Nº Desenho',
+    'T.Crono(s/pç)','T.Crono Fmt','Seg/Peça Real','T.Real Fmt',
+    'Desvio(s)','Desvio(%)','Status','Qtd Produzida','Apontamentos'];
+  const cronoRows=DB.pecas.map(p=>{
+    const aps=DB.apontamentos.filter(a=>a.tipo==='peca'&&a.pecId==p.id&&a.fim&&a.qtd>0);
+    if(!aps.length)return[p.codigo,p.descricao,p.material||'',p.desenho||'',
+      p.tempoCrono>0?p.tempoCrono:'',p.tempoCrono>0?fmtSec(p.tempoCrono):'',
+      '','','','','Sem produção',0,0];
+    const segTotal=aps.reduce((s,a)=>s+cm2(a.inicio,a.fim)*60,0);
+    const qtdTotal=aps.reduce((s,a)=>s+(+a.qtd),0);
+    const sppReal=qtdTotal>0?segTotal/qtdTotal:0;
+    const desvS=p.tempoCrono>0?(sppReal-p.tempoCrono).toFixed(2):'';
+    const desvPn=p.tempoCrono>0?(sppReal-p.tempoCrono)/p.tempoCrono*100:null;
+    const desvP=desvPn!=null?desvPn.toFixed(1)+'%':'';
+    const stat=desvPn==null?'Sem Crono':desvPn<=-5?'Acima do Esperado':desvPn<=5?'No Tempo':desvPn<=15?'Atenção':desvPn<=30?'Abaixo':'Crítico';
+    return[p.codigo,p.descricao,p.material||'',p.desenho||'',
+      p.tempoCrono>0?p.tempoCrono:'',p.tempoCrono>0?fmtSec(p.tempoCrono):'',
+      +sppReal.toFixed(2),fmtSec(sppReal),desvS,desvP,stat,qtdTotal,aps.length];
+  }).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+  const wsCrono=XLSX.utils.aoa_to_sheet([cronoH,...cronoRows]);
+  wsCrono['!cols']=cronoH.map((_,i)=>({wch:[12,30,14,12,14,14,14,14,12,12,18,14,14][i]||14}));
+  XLSX.utils.book_append_sheet(wb,wsCrono,'Real vs Crono');
+
+  XLSX.writeFile(wb,'APONTAKI_ADMIN_'+new Date().toISOString().slice(0,10)+'.xlsx');
+  toast('Excel administrativo gerado com 5 abas! 📊','g');
+}
+
 // ══ CONFIG ═════════════════════════════════════════════════════════
 const GAS_CODE=`function doPost(e) {
   try {
@@ -3463,18 +3639,42 @@ const GAS_CODE=`function doPost(e) {
       var sheet = ss.getSheetByName('Apontamentos');
       if (!sheet) {
         sheet = ss.insertSheet('Apontamentos');
-        sheet.appendRow(['ID','Tipo','Maq.Cod','Maq.Nome','Setor','Operador','Matricula',
-          'Cod/Operacao','Descricao/Peca','Categoria','Inicio','Fim',
-          'Duracao(min)','Duracao','Qtd','Observacao','Status','Enviado Em']);
-        sheet.getRange(1,1,1,18).setFontWeight('bold')
+        sheet.appendRow([
+          'ID','Tipo','Máq.Cód','Máq.Nome','Setor',
+          'Operador','Matrícula','Turno','Cargo',
+          'Cód/Operação','Descrição Peça/Parada',
+          'Categoria Parada','Tipo Parada','Prioridade Parada',
+          'Material','Nº Desenho','T.Crono(s/pç)','Desvio(s)','Desvio(%)','Status Produtividade',
+          'Início','Fim','Duração(min)','Duração','Qtd Produzida',
+          'Observação','Status','Sincronizado Em'
+        ]);
+        sheet.getRange(1,1,1,28).setFontWeight('bold')
           .setBackground('#0c1220').setFontColor('#f0b429');
         sheet.setFrozenRows(1);
+        // Larguras de coluna
+        var widths=[60,80,90,160,110,160,100,80,140,130,220,130,100,110,130,110,110,90,80,160,160,160,110,100,90,200,100,160];
+        widths.forEach(function(w,i){sheet.setColumnWidth(i+1,w);});
       }
       var ip = d.tipo === 'peca';
-      sheet.appendRow([d.id,d.tipo,d.maquinaCod,d.maquinaNome,d.maquinaSetor,
-        d.operadorNome,d.operadorMatricula,ip?d.operacao:d.paradaCod,
-        ip?d.pecaDesc:d.paradaDesc,ip?'':d.paradaCat,
-        d.inicio,d.fim,d.duracaoMin,d.duracaoFmt,d.quantidade||'',d.obs,d.status,d.enviadoEm]);
+      sheet.appendRow([
+        d.id, d.tipo, d.maquinaCod, d.maquinaNome, d.maquinaSetor,
+        d.operadorNome, d.operadorMatricula, d.operadorTurno||'', d.operadorCargo||'',
+        ip ? (d.operacao||d.pecaCod) : d.paradaCod,
+        ip ? d.pecaDesc : d.paradaDesc,
+        ip ? '' : (d.paradaCat||''),
+        ip ? '' : (d.paradaTipo||''),
+        ip ? '' : (d.paradaPrioridade||''),
+        ip ? (d.pecaMaterial||'') : '',
+        ip ? (d.pecaDesenho||'') : '',
+        ip ? (d.tempoCrono||'') : '',
+        ip ? (d.desvioSeg||'') : '',
+        ip ? (d.desvioPct!=null && d.desvioPct!=='' ? d.desvioPct+'%' : '') : '',
+        ip ? (d.statusProdutividade||'') : '',
+        d.inicio, d.fim,
+        d.duracaoMin, d.duracaoFmt,
+        ip ? (d.quantidade||'') : '',
+        d.obs, d.status, d.enviadoEm
+      ]);
     }
 
     // ── Aba Produtividade ─────────────────────────────────────────────
